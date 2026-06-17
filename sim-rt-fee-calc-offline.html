@@ -1,0 +1,1254 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>放射線治療 算定点数シミュレータ（オフライン版） | RadiTech</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@500;700;900&family=Noto+Sans+JP:wght@400;500;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --cyan: #0891b2;
+    --cyan-deep: #0c4a6e;
+    --cyan-pale: #e0f2fe;
+    --ink: #1e293b;
+    --ink-soft: #475569;
+    --paper: #fdfdfb;
+    --amber: #b45309;
+    --amber-bg: #fffbeb;
+    --line: #cbd5e1;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: 'Noto Sans JP', 'Hiragino Sans', 'Hiragino Kaku Gothic ProN', Meiryo, 'Yu Gothic', 'Yu Gothic UI', 'Noto Sans CJK JP', sans-serif;
+    color: var(--ink);
+    line-height: 1.7;
+    /* 線量分布チャート風の方眼紙テクスチャ */
+    background:
+      linear-gradient(rgba(8,145,178,0.045) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(8,145,178,0.045) 1px, transparent 1px),
+      linear-gradient(rgba(8,145,178,0.025) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(8,145,178,0.025) 1px, transparent 1px),
+      #f4f8fa;
+    background-size: 80px 80px, 80px 80px, 16px 16px, 16px 16px;
+    padding: 18px 14px 26px;
+  }
+  .sim-wrap { max-width: 960px; margin: 0 auto; }
+
+  /* ===== ヘッダー：計器パネル風 ===== */
+  .console-head {
+    background: linear-gradient(135deg, #0c4a6e 0%, #155e75 60%, #0e7490 100%);
+    border-radius: 14px 14px 0 0;
+    padding: 18px 22px 16px;
+    color: #fff;
+    position: relative;
+    overflow: hidden;
+  }
+  .console-head::after {
+    content: "";
+    position: absolute; inset: 0;
+    background: radial-gradient(ellipse at 85% -20%, rgba(125,211,252,0.35), transparent 55%);
+    pointer-events: none;
+  }
+  .console-eyebrow {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px; letter-spacing: 0.22em;
+    color: #7dd3fc; text-transform: uppercase;
+    margin: 0 0 4px;
+  }
+  .console-title {
+    font-family: 'Zen Kaku Gothic New', sans-serif;
+    font-weight: 900; font-size: clamp(19px, 4vw, 24px);
+    margin: 0; line-height: 1.35; letter-spacing: 0.01em;
+  }
+  .console-sub { font-size: 12px; color: #bae6fd; margin: 6px 0 0; }
+
+  .console-body {
+    display: grid;
+    grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
+    gap: 0;
+    background: #fff;
+    border: 1px solid var(--line);
+    border-top: none;
+    border-radius: 0 0 14px 14px;
+    overflow: hidden;
+  }
+
+  /* ===== 左：入力フォーム ===== */
+  .panel-form { padding: 22px 22px 26px; border-right: 1px dashed var(--line); min-width: 0; }
+  .fgroup { margin: 0 0 18px; }
+  .flabel {
+    display: flex; align-items: center; gap: 8px;
+    font-family: 'Zen Kaku Gothic New', sans-serif;
+    font-weight: 700; font-size: 13.5px; color: var(--cyan-deep);
+    margin: 0 0 7px;
+  }
+  .flabel .step {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10.5px; font-weight: 600;
+    background: var(--cyan-deep); color: #7dd3fc;
+    border-radius: 5px; padding: 2px 7px; letter-spacing: 0.08em;
+    flex: none;
+  }
+  select, input[type="number"] {
+    width: 100%;
+    font-family: 'Noto Sans JP', sans-serif;
+    font-size: 14px; color: var(--ink);
+    padding: 10px 12px;
+    border: 1.5px solid var(--line);
+    border-radius: 9px;
+    background: #fff;
+    transition: border-color 0.15s, box-shadow 0.15s;
+    appearance: auto;
+  }
+  select:focus, input[type="number"]:focus {
+    outline: none;
+    border-color: var(--cyan);
+    box-shadow: 0 0 0 3px rgba(8,145,178,0.15);
+  }
+  select:disabled { background: #f1f5f9; color: var(--ink-soft); }
+  .hint { font-size: 11.5px; color: var(--ink-soft); margin: 5px 2px 0; }
+  .hint.req { color: var(--amber); }
+  .hint.locked { color: var(--cyan-deep); font-weight: 600; }
+
+  /* boost併用ワンタップ補正ボタン（乳房一連のみ表示） */
+  .boost-btn {
+    margin-top: 8px;
+    width: 100%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    padding: 9px 12px;
+    font-size: 12.5px;
+    font-weight: 700;
+    line-height: 1.3;
+    color: var(--cyan-deep);
+    background: var(--cyan-pale);
+    border: 1.5px dashed var(--cyan);
+    border-radius: 9px;
+    cursor: pointer;
+    transition: background .15s, color .15s, border-color .15s, box-shadow .15s;
+  }
+  .boost-btn:hover { background: #cfeafd; }
+  .boost-btn[hidden] { display: none !important; }
+  .boost-btn:disabled {
+    color: var(--ink-soft);
+    background: #f1f5f9;
+    border-color: #cbd5e1;
+    border-style: dashed;
+    cursor: not-allowed;
+    box-shadow: none;
+    opacity: 0.7;
+  }
+  .boost-btn:disabled:hover { background: #f1f5f9; }
+  .boost-btn:disabled .boost-ico { background: #94a3b8; color: #fff; }
+  .boost-btn .boost-ico {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px; height: 18px;
+    border-radius: 50%;
+    background: var(--cyan);
+    color: #fff;
+    font-size: 13px;
+    font-weight: 700;
+    flex: 0 0 auto;
+  }
+  .boost-btn.is-on {
+    color: #fff;
+    background: var(--cyan);
+    border-style: solid;
+    border-color: var(--cyan-deep);
+    box-shadow: 0 2px 8px rgba(8,145,178,0.3);
+  }
+  .boost-btn.is-on .boost-ico { background: #fff; color: var(--cyan); }
+
+  /* boost回数セレクト（boost ON時のみ表示） */
+  .boost-fx {
+    margin-top: 8px;
+    padding: 10px 12px;
+    background: #f0f9ff;
+    border: 1px solid var(--cyan-pale);
+    border-left: 3px solid var(--cyan);
+    border-radius: 9px;
+  }
+  .boost-fx-label {
+    display: block;
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--cyan-deep);
+    margin-bottom: 5px;
+  }
+  .boost-fx .hint { margin-top: 6px; }
+
+  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+  /* チェック行 */
+  .checks { display: flex; flex-direction: column; gap: 7px; }
+  .chk {
+    display: flex; align-items: flex-start; gap: 9px;
+    padding: 9px 11px;
+    border: 1.5px solid var(--line);
+    border-radius: 9px;
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s;
+    background: #fff;
+    font-size: 13px;
+  }
+  .chk:hover { border-color: var(--cyan); }
+  .chk.on { border-color: var(--cyan); background: var(--cyan-pale); }
+  .chk input { margin: 4px 0 0; accent-color: var(--cyan); flex: none; }
+  .chk .pt {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px; font-weight: 600; color: var(--cyan-deep);
+    margin-left: auto; white-space: nowrap; padding-left: 8px; flex: none;
+  }
+  .chk small { display: block; color: var(--ink-soft); font-size: 11px; line-height: 1.5; }
+  .chk[hidden] { display: none !important; }
+  .chk-note[hidden] { display: none !important; }
+  .fgroup[hidden] { display: none !important; }
+  .chk-note {
+    margin: 4px 0 0; font-size: 11px; line-height: 1.5;
+    color: var(--ink-soft); padding-left: 11px;
+  }
+  .gated[hidden] { display: none; }
+
+  /* ===== 右：レセプト風伝票 ===== */
+  .panel-receipt {
+    background: var(--paper);
+    padding: 24px 20px 26px;
+    position: relative;
+    min-width: 0;
+    /* ミシン目（上端） */
+    background-image: radial-gradient(circle at 8px 0, transparent 5px, var(--paper) 5.5px);
+    background-size: 16px 100%;
+    background-repeat: repeat-x;
+  }
+  .receipt-head {
+    display: flex; align-items: baseline; justify-content: space-between;
+    border-bottom: 2px solid var(--cyan-deep);
+    padding-bottom: 8px; margin-bottom: 4px;
+  }
+  .receipt-title {
+    font-family: 'Zen Kaku Gothic New', sans-serif;
+    font-weight: 900; font-size: 15px; color: var(--cyan-deep);
+    letter-spacing: 0.12em;
+  }
+  .receipt-no {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10.5px; color: var(--ink-soft); letter-spacing: 0.1em;
+  }
+  .rline {
+    display: flex; align-items: baseline; gap: 8px;
+    padding: 8px 0 7px;
+    border-bottom: 1px dotted #d6dee6;
+    opacity: 0;
+    transform: translateY(6px);
+    animation: rise 0.4s ease forwards;
+  }
+  @keyframes rise { to { opacity: 1; transform: none; } }
+  .rline .nm { font-size: 12.5px; font-weight: 500; min-width: 0; }
+  .rline .nm small { display: block; font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: var(--ink-soft); letter-spacing: 0.02em; }
+  .rline .leader { flex: 1; border-bottom: 1px dotted #b6c2cd; transform: translateY(-4px); min-width: 12px; }
+  .rline .val {
+    font-family: 'IBM Plex Mono', monospace;
+    font-variant-numeric: tabular-nums;
+    font-size: 14px; font-weight: 600; color: var(--ink);
+    white-space: nowrap;
+  }
+  .rline.minor .val { color: var(--ink-soft); font-size: 13px; }
+
+  .receipt-total {
+    margin-top: 14px;
+    background: var(--cyan-deep);
+    border-radius: 12px;
+    padding: 14px 18px 15px;
+    color: #fff;
+    position: relative;
+    overflow: hidden;
+  }
+  .receipt-total::after {
+    content: "";
+    position: absolute; inset: 0;
+    background: radial-gradient(ellipse at 100% 0%, rgba(125,211,252,0.3), transparent 50%);
+  }
+  .tlabel { font-size: 11px; letter-spacing: 0.25em; color: #7dd3fc; font-family: 'Zen Kaku Gothic New', sans-serif; font-weight: 700; }
+  .tpoints {
+    font-family: 'IBM Plex Mono', monospace;
+    font-variant-numeric: tabular-nums;
+    font-size: clamp(30px, 6vw, 38px); font-weight: 600;
+    line-height: 1.15; letter-spacing: -0.01em;
+  }
+  .tpoints .unit { font-size: 15px; font-weight: 500; color: #bae6fd; margin-left: 4px; letter-spacing: 0.1em; }
+  .tyen { font-size: 13px; color: #bae6fd; font-family: 'IBM Plex Mono', monospace; margin-top: 2px; }
+
+  /* 「概算」スタンプ */
+  .stamp {
+    position: absolute; top: 10px; right: 14px;
+    width: 52px; height: 52px;
+    border: 2.5px solid rgba(125,211,252,0.75);
+    border-radius: 50%;
+    display: grid; place-items: center;
+    font-family: 'Zen Kaku Gothic New', sans-serif;
+    font-weight: 900; font-size: 13px; color: rgba(186,230,253,0.95);
+    transform: rotate(-12deg);
+    letter-spacing: 0.1em;
+    z-index: 1;
+  }
+
+  .copay {
+    margin-top: 12px;
+    display: flex; align-items: center; gap: 10px;
+    font-size: 13px;
+  }
+  .copay select { width: auto; padding: 6px 10px; font-size: 13px; }
+  .copay .cv {
+    margin-left: auto;
+    font-family: 'IBM Plex Mono', monospace;
+    font-variant-numeric: tabular-nums;
+    font-weight: 600; font-size: 16px; color: var(--cyan-deep);
+  }
+  .kogaku {
+    margin-top: 10px;
+    background: var(--amber-bg);
+    border: 1px solid #fde68a;
+    border-radius: 9px;
+    padding: 9px 12px;
+    font-size: 11.5px; color: var(--amber); line-height: 1.65;
+  }
+  /* CSV / 印刷ボタン */
+  .export-row {
+    margin-top: 12px;
+    display: flex;
+    gap: 8px;
+  }
+  .export-btn {
+    flex: 1 1 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 9px 10px;
+    font-size: 12.5px;
+    font-weight: 700;
+    color: var(--cyan-deep);
+    background: #fff;
+    border: 1.5px solid var(--cyan);
+    border-radius: 9px;
+    cursor: pointer;
+    transition: background .15s, color .15s;
+  }
+  .export-btn:hover { background: var(--cyan); color: #fff; }
+  .export-ico { font-size: 13px; line-height: 1; }
+
+  .disclaimer {
+    margin-top: 14px;
+    font-size: 10.5px; color: var(--ink-soft); line-height: 1.7;
+    border-top: 1px solid #e2e8f0; padding-top: 10px;
+  }
+
+  @media (max-width: 720px) {
+    body { padding: 10px 8px 18px; }
+    .console-body { grid-template-columns: 1fr; }
+    .panel-form { border-right: none; border-bottom: 1px dashed var(--line); padding: 18px 16px 20px; }
+    .panel-receipt { padding: 20px 16px 22px; }
+    .row2 { grid-template-columns: 1fr; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .rline { animation: none; opacity: 1; transform: none; }
+  }
+
+  /* 印刷（PDF保存）時：入力パネルや操作系を隠し、伝票だけをきれいに出す */
+  @media print {
+    body {
+      background: #fff !important;
+      padding: 0 !important;
+    }
+    .sim-wrap { box-shadow: none !important; }
+    .console-head {
+      background: #0c4a6e !important;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+    .console-body {
+      grid-template-columns: 1fr !important;
+      border: none !important;
+    }
+    .panel-form { display: none !important; }
+    .panel-receipt { border: none !important; }
+    .copay select { border: none !important; }
+    .export-row { display: none !important; }
+    .receipt-total {
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+    .rline { animation: none !important; opacity: 1 !important; transform: none !important; }
+  }
+</style>
+</head>
+<body>
+<div class="sim-wrap">
+  <div class="console-head">
+    <p class="console-eyebrow">RT FEE CALCULATOR — 2026.06 REV.</p>
+    <h1 class="console-title">放射線治療 算定点数シミュレータ</h1>
+    <p class="console-sub">治療技術と加算を選ぶと、一連の総点数と窓口負担の概算を自動計算します（2026年6月改定対応）</p>
+  </div>
+
+  <div class="console-body">
+    <!-- 入力 -->
+    <div class="panel-form">
+      <div class="fgroup">
+        <div class="flabel"><span class="step">01</span>治療技術（照射料）</div>
+        <select id="tech"></select>
+        <p class="hint" id="techHint"></p>
+      </div>
+
+      <div class="fgroup row2">
+        <div>
+          <div class="flabel"><span class="step">02</span>照射回数（分割）</div>
+          <input type="number" id="fx" min="1" max="45" step="1" value="25">
+          <p class="hint">回数課金の照射料と、1日1回の加算（IGRT等）に反映</p>
+        </div>
+        <div>
+          <div class="flabel"><span class="step">03</span>小児加算（通則3）</div>
+          <select id="ped">
+            <option value="0">なし（15歳以上）</option>
+            <option value="0.8">新生児 +80%</option>
+            <option value="0.5">3歳未満 +50%</option>
+            <option value="0.3">3歳以上6歳未満 +30%</option>
+            <option value="0.2">6歳以上15歳未満 +20%</option>
+          </select>
+          <p class="hint">照射料・管理料の所定点数に乗算（注加算は対象外）</p>
+        </div>
+      </div>
+
+      <div class="fgroup row2">
+        <div>
+          <div class="flabel"><span class="step">04</span>M000 放射線治療管理料</div>
+          <select id="mgmt">
+            <option value="0">算定しない</option>
+            <option value="2700">1：1門・対向2門・外部照射（2,700点）</option>
+            <option value="3100">2：非対向2門・3門・腔内照射（3,100点）</option>
+            <option value="4000">3：4門以上・運動・原体・組織内照射（4,000点）</option>
+            <option value="5000">4：強度変調放射線治療 IMRT（5,000点）</option>
+          </select>
+          <p class="hint" id="mgmtHint" hidden></p>
+          <button type="button" class="boost-btn" id="boostBtn" hidden aria-pressed="false">
+            <span class="boost-ico" aria-hidden="true">＋</span>
+            <span class="boost-tx">boost併用例で管理料を算定する</span>
+          </button>
+          <div class="boost-fx" id="boostFxWrap" hidden>
+            <label class="boost-fx-label" for="boostFx">boost（1門照射）の回数</label>
+            <select id="boostFx">
+              <option value="3">3回（840点 × 3）</option>
+              <option value="4" selected>4回（840点 × 4）</option>
+              <option value="5">5回（840点 × 5）</option>
+              <option value="6">6回（840点 × 6）</option>
+            </select>
+            <p class="hint">boost分は1門照射（高エネ ロ・840点／回）の個別評価として照射料に加算。管理料・専任加算は計画1回分のみ</p>
+          </div>
+        </div>
+        <div id="mgmtNWrap">
+          <div class="flabel"><span class="step">　</span>管理料の算定回数（一連）</div>
+          <select id="mgmtN">
+            <option value="1">1回（計画1回）</option>
+            <option value="2" selected>2回（初回＋ブースト計画／一連の上限）</option>
+            <option value="4">4回（子宮頸癌の腔内照射のみ）</option>
+          </select>
+          <p class="hint">M000は「分布図の作成1回につき」。原則は一連2回まで、子宮頸癌の腔内照射のみ一連4回まで</p>
+        </div>
+      </div>
+
+      <div class="fgroup gated" data-gate="gamma" id="rowA400" hidden>
+        <div class="flabel"><span class="step">A4</span>算定方式（ガンマナイフ）</div>
+        <select id="a400">
+          <option value="tech">技術料で算定（M001-2＋加算を積み上げ）</option>
+          <option value="a400">短期滞在手術等基本料3で算定（A400・包括）</option>
+        </select>
+        <p class="hint" id="a400Hint">ガンマナイフは通常入院を要するため、4泊5日以内の入院ではA400（短期滞在手術等基本料3）で包括算定する施設が多い。A400は病院（有床）前提で、無床診療所では算定不可</p>
+      </div>
+
+      <div class="fgroup">
+        <div class="flabel"><span class="step">05</span>画像誘導放射線治療加算（IGRT・1日1回）</div>
+        <select id="igrt"></select>
+        <p class="hint" id="igrtHint"></p>
+      </div>
+
+      <div class="fgroup" id="rowExtras">
+        <div class="flabel"><span class="step">06</span>その他の加算・管理料</div>
+        <div class="checks">
+          <label class="chk gated" data-gate="mgmt" id="rowSennin">
+            <input type="checkbox" id="sennin">
+            <span>放射線治療専任加算<small>M000注2／管理料の算定ごと</small></span>
+            <span class="pt">+330×管理料回数</span>
+          </label>
+          <label class="chk gated" data-gate="mgmt" id="rowGairai">
+            <input type="checkbox" id="gairai">
+            <span>外来放射線治療加算<small>M000注3／外来通院・1日1回</small></span>
+            <span class="pt">+100×照射回数</span>
+          </label>
+          <label class="chk" id="rowAnzen">
+            <input type="checkbox" id="anzen" checked>
+            <span>医療機器安全管理料2<small>B011-4／一連につき1回（照射初日）</small></span>
+            <span class="pt">+1,100</span>
+          </label>
+          <p class="chk-note" id="anzenNote" hidden>A400 短期滞在手術等基本料3に包括されるため、医療機器安全管理料2は別に算定できません</p>
+          <label class="chk gated" data-gate="m001" data-gate2="m001bnct" id="rowKotei">
+            <input type="checkbox" id="kotei">
+            <span>体外照射用固定器具加算<small id="koteiNote">M001注9／一連につき1回</small></span>
+            <span class="pt">+1,000</span>
+          </label>
+          <label class="chk gated" data-gate="m001" id="rowKokyu">
+            <input type="checkbox" id="kokyu">
+            <span>体外照射呼吸性移動対策加算<small>M001注11／1日1回</small></span>
+            <span class="pt">+150×照射回数</span>
+          </label>
+          <label class="chk gated" data-gate="srt" id="rowTeiiKokyuD">
+            <input type="checkbox" id="teiiKokyuD">
+            <span>定位呼吸性移動対策（動体追尾法）<small>M001-3注／一連につき</small></span>
+            <span class="pt">+10,000</span>
+          </label>
+          <label class="chk gated" data-gate="srt" id="rowTeiiKokyuS">
+            <input type="checkbox" id="teiiKokyuS">
+            <span>定位呼吸性移動対策（その他）<small>M001-3注／一連につき</small></span>
+            <span class="pt">+5,000</span>
+          </label>
+          <label class="chk gated" data-gate="ptc" id="rowPtcTekiou">
+            <input type="checkbox" id="ptcTekiou">
+            <span>粒子線治療適応判定加算<small>M001-4注2／一連につき</small></span>
+            <span class="pt">+40,000</span>
+          </label>
+          <label class="chk gated" data-gate="ptc" id="rowPtcIgaku">
+            <input type="checkbox" id="ptcIgaku">
+            <span>粒子線治療医学管理加算<small>M001-4注3／一連につき</small></span>
+            <span class="pt">+10,000</span>
+          </label>
+          <label class="chk gated" data-gate="bnct" id="rowBnctTekiou">
+            <input type="checkbox" id="bnctTekiou">
+            <span>BNCT適応判定加算<small>M001-5注2／一連につき</small></span>
+            <span class="pt">+40,000</span>
+          </label>
+          <label class="chk gated" data-gate="bnct" id="rowBnctIgaku">
+            <input type="checkbox" id="bnctIgaku">
+            <span>BNCT医学管理加算<small>M001-5注3／一連につき</small></span>
+            <span class="pt">+10,000</span>
+          </label>
+        </div>
+      </div>
+    </div>
+
+    <!-- 伝票 -->
+    <div class="panel-receipt">
+      <div class="receipt-head">
+        <span class="receipt-title">算 定 内 訳</span>
+        <span class="receipt-no" id="stampDate">REV 2026-06</span>
+      </div>
+      <div id="lines"></div>
+
+      <div class="receipt-total">
+        <div class="stamp">概算</div>
+        <div class="tlabel">一連の総点数</div>
+        <div class="tpoints"><span id="totalPt">0</span><span class="unit">点</span></div>
+        <div class="tyen">＝ <span id="totalYen">0</span> 円（1点10円）</div>
+      </div>
+
+      <div class="copay">
+        <span>窓口負担</span>
+        <select id="copay">
+          <option value="0.3">3割</option>
+          <option value="0.2">2割</option>
+          <option value="0.1">1割</option>
+        </select>
+        <span class="cv" id="copayYen">0 円</span>
+      </div>
+      <div class="kogaku" id="kogakuNote" hidden>
+        💡 自己負担が月の上限額を超える場合は<strong>高額療養費制度</strong>の対象です。年収約370〜770万円の方なら自己負担上限は月8万円強（80,100円＋α）まで下がります。
+      </div>
+
+      <div class="export-row">
+        <button type="button" class="export-btn" id="btnCsv">
+          <span class="export-ico" aria-hidden="true">⬇</span>CSVで保存
+        </button>
+        <button type="button" class="export-btn" id="btnPrint">
+          <span class="export-ico" aria-hidden="true">🖨</span>印刷・PDF
+        </button>
+      </div>
+
+      <p class="disclaimer">
+        ※本シミュレータは学習用の概算ツールです。点数は2026年6月改定（令和8年告示）ベース。実際の算定は最新の告示・通知・疑義解釈および審査支払機関の取扱いに従ってください。施設基準の届出が前提の項目を含みます。入院料・診察料・検査料等は含みません。
+      </p>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  /* 治療技術マスタ（記事「算定マスターリファレンス」2026年6月改定対応と同値） */
+  var TECHS = [
+    { id: 'he1',      label: '高エネルギー放射線治療 ロ（1門照射）',            base: 840,    per: true,  mgmt: '2700', gates: ['m001'], igrt: 'none',
+      hint: '1回目（1部位目）840点／回。2部位目以降は336点／回（本計算は1部位想定）' },
+    { id: 'he2',      label: '高エネルギー放射線治療 ロ（2門以上・運動・原体）', base: 1750,   per: true,  mgmt: '4000', gates: ['m001'], igrt: 'bc',
+      hint: '1回目（1部位目）1,750点／回。IGRTは4門以上・運動・原体に限り算定可' },
+    { id: 'breast',   label: '高エネルギー イ：乳癌全乳房照射（一連）',          base: 41500,  per: false, mgmt: '2700', gates: ['m001'], igrt: 'a-series',
+      mgmtLock: true, boost: true, fxDefault: 16,
+      hint: '寡分割照射を含む一連評価。施設基準届出施設のみ。回数を増やしても照射料は変わりません' },
+    { id: 'imrt',     label: 'IMRT ロ：その他（1回につき）',                     base: 3000,   per: true,  mgmt: '5000', gates: ['m001'], igrt: 'bc',
+      hint: '強度変調放射線治療。3,000点／回' },
+    { id: 'prostate', label: 'IMRT イ：前立腺癌に対する前立腺照射（一連）',      base: 96500,  per: false, mgmt: '5000', gates: ['m001'], igrt: 'c-req-series',
+      mgmtLock: true, fxDefault: 20,
+      hint: '一連評価。IGRT ハ（腫瘍）一連9,000点の算定が要件のため自動選択されます' },
+    { id: 'srt',      label: 'M001-3 定位放射線治療（直線加速器・一連）',        base: 63000,  per: false, mgmt: '4000', gates: ['srt'],  igrt: 'none',
+      hint: 'SRT／SBRT。一連につき63,000点。IGRT・体外照射呼吸性加算は対象外' },
+    { id: 'gamma',    label: 'M001-2 ガンマナイフ（一連）',                      base: 50000,  per: false, mgmt: '0', gates: ['gamma'], igrt: 'none',
+      mgmtZero: true, a400: true, fxDefault: 1,
+      hint: '頭蓋内病変。一連につき50,000点。麻酔・画像診断・検査・放射線治療管理は所定点数に包括' },
+    { id: 'ptcRare',  label: '粒子線治療 イ：希少がん等（一連）',                base: 187500, per: false, mgmt: '4000', gates: ['ptc'],  igrt: 'none',
+      noPed: true,
+      hint: '重粒子線・陽子線とも187,500点。対象疾患は限定（骨軟部・頭頸部・小児等）。固定器具加算は注に規定なし。小児加算（通則3）は対象外' },
+    { id: 'ptcOther', label: '粒子線治療 ロ：その他＝前立腺癌（一連）',          base: 110000, per: false, mgmt: '4000', gates: ['ptc'],  igrt: 'none',
+      noPed: true,
+      hint: '一連につき110,000点。固定器具加算は注に規定なし。小児加算（通則3）は対象外' },
+    { id: 'bnct',     label: 'M001-5 ホウ素中性子捕捉療法 BNCT（一連）',         base: 187500, per: false, mgmt: '0',    gates: ['bnct', 'm001bnct'], igrt: 'none',
+      noPed: true,
+      hint: '切除不能な局所進行・局所再発の頭頸部癌。一連につき187,500点。固定器具加算は注4で算定可。小児加算（通則3）は対象外' }
+  ];
+
+  // series:true のオプションは「一連につき1回」の固定額（×照射日数しない）
+  var IGRT_OPTS = {
+    'none':     [{ v: 0, t: '算定対象外' }],
+    'a':        [{ v: 0, t: 'なし' }, { v: 150, t: 'イ 体表面の位置情報（+150点／日）' }],
+    'a-series': [{ v: 0, t: 'なし' }, { v: 2400, series: true, t: 'イ 体表面（乳房一連）一連1回 +2,400点' }],
+    'bc':       [{ v: 0, t: 'なし' }, { v: 300, t: 'ロ 骨構造の位置情報（+300点／日）' }, { v: 450, t: 'ハ 腫瘍の位置情報（+450点／日）' }],
+    'c-req':         [{ v: 450, t: 'ハ 腫瘍の位置情報（+450点／日）— 算定要件' }],
+    'c-req-series':  [{ v: 9000, series: true, t: 'ハ 腫瘍（前立腺IMRT一連）一連1回 +9,000点 — 算定要件' }]
+  };
+
+  var $ = function (id) { return document.getElementById(id); };
+  var techSel = $('tech'), fxIn = $('fx'), pedSel = $('ped'),
+      mgmtSel = $('mgmt'), mgmtNSel = $('mgmtN'), igrtSel = $('igrt'),
+      boostBtn = $('boostBtn'), mgmtHint = $('mgmtHint'),
+      boostFx = $('boostFx'), boostFxWrap = $('boostFxWrap'),
+      mgmtNWrap = $('mgmtNWrap'), a400Sel = $('a400'), koteiNote = $('koteiNote'),
+      anzenChk = $('anzen'), rowAnzen = $('rowAnzen'), anzenNote = $('anzenNote'),
+      rowExtras = $('rowExtras');
+
+  // boost（1門照射）の所定点数：高エネルギー放射線治療 ロ・1回目840点
+  var BOOST_BASE = 840;
+
+  // A400 短期滞在手術等基本料3：M001-2 ガンマナイフによる定位放射線治療（令和8年=2026年6月改定）
+  var A400_GAMMA = 59673;          // 4泊5日以内の入院で包括算定（無床診療所は算定不可）
+  var A400_GAMMA_SEIKATSU = 59569; // 生活療養を受ける場合
+
+  // 乳房一連の「boost併用で管理料を算定する」補正がONか
+  var boostOn = false;
+
+  TECHS.forEach(function (t, i) {
+    var o = document.createElement('option');
+    o.value = t.id; o.textContent = t.label;
+    techSel.appendChild(o);
+  });
+  techSel.value = 'imrt';
+
+  function tech() {
+    return TECHS.filter(function (t) { return t.id === techSel.value; })[0];
+  }
+
+  function fmt(n) { return Math.round(n).toLocaleString('ja-JP'); }
+
+  // 加算チェック行などの表示/非表示だけを更新（管理料の選択値は変更しない）
+  function updateGates() {
+    var t = tech();
+    var gates = document.querySelectorAll('.gated');
+    Array.prototype.forEach.call(gates, function (el) {
+      var g = el.getAttribute('data-gate');
+      var g2 = el.getAttribute('data-gate2');
+      var show;
+      if (g === 'mgmt') {
+        show = (mgmtSel.value !== '0');
+      } else {
+        show = (t.gates.indexOf(g) >= 0);
+        if (!show) { if (g2) { if (t.gates.indexOf(g2) >= 0) { show = true; } } }
+      }
+      el.hidden = !show;
+      if (!show) {
+        var cb = el.querySelector('input');
+        if (cb) { cb.checked = false; }
+      }
+    });
+
+    // 固定器具加算の根拠表示：体外照射(M001注9) と BNCT(M001-5注4) で区分が異なる
+    if (koteiNote) {
+      if (t.gates.indexOf('m001bnct') >= 0) {
+        koteiNote.textContent = 'M001-5注4／一連につき1回';
+      } else {
+        koteiNote.textContent = 'M001注9／一連につき1回';
+      }
+    }
+  }
+
+  // 一連評価（mgmtLock）の管理料セレクトのロック/解除と注記・boostボタン表示を一元管理
+  function applyMgmtLock() {
+    var t = tech();
+
+    // ガンマナイフ等：M000 放射線治療管理は所定点数に包括 → 管理料はグレーアウトで0固定、
+    // 「管理料の算定回数」フィールドも丸ごと隠す
+    if (t.mgmtZero) {
+      mgmtSel.value = '0';
+      mgmtSel.disabled = true;
+      mgmtNSel.disabled = true;
+      if (mgmtNWrap) { mgmtNWrap.hidden = true; }
+      mgmtHint.hidden = false;
+      mgmtHint.className = 'hint locked';
+      mgmtHint.textContent = '放射線治療管理・画像診断・検査・麻酔は所定点数に含まれ、別に算定できません（M000は算定不可）';
+      boostBtn.hidden = true;
+      boostBtn.disabled = true;
+      boostBtn.classList.remove('is-on');
+      boostBtn.setAttribute('aria-pressed', 'false');
+      boostBtn.setAttribute('aria-hidden', 'true');
+      boostFxWrap.hidden = true;
+      return;
+    }
+
+    // mgmtZero でない技術では「管理料の算定回数」フィールドを再表示
+    if (mgmtNWrap) { mgmtNWrap.hidden = false; }
+
+    if (!t.mgmtLock) {
+      // 通常技術：ロック解除・boost関連UIは隠す
+      mgmtSel.disabled = false;
+      mgmtNSel.disabled = false;
+      mgmtHint.hidden = true;
+      boostBtn.hidden = true;
+      boostBtn.disabled = true;
+      boostBtn.classList.remove('is-on');
+      boostBtn.setAttribute('aria-pressed', 'false');
+      boostBtn.setAttribute('aria-hidden', 'true');
+      boostFxWrap.hidden = true;
+      return;
+    }
+
+    // 一連評価技術：原則は管理料を算定しない（0固定・セレクトはロック）
+    if (boostOn) {
+      // boost併用例：1門照射を別途行う運用 → 管理料2,700点を算定（計画1回分のみ）
+      mgmtSel.disabled = false;
+      mgmtSel.value = '2700';
+      mgmtNSel.value = '1';        // 管理料・専任加算は必ず1回だけ
+      mgmtNSel.disabled = true;
+      mgmtHint.hidden = false;
+      mgmtHint.className = 'hint locked';
+      mgmtHint.textContent = 'boost併用例：管理料は区分1（2,700点）×1回のみ。専任加算も計画1回分。boostの照射料は下で回数指定';
+      boostFxWrap.hidden = false;
+    } else {
+      // 既定：0固定・ロック
+      mgmtSel.value = '0';
+      mgmtSel.disabled = true;
+      mgmtNSel.disabled = false;
+      mgmtHint.hidden = false;
+      mgmtHint.className = 'hint locked';
+      mgmtHint.textContent = '一連評価では計画費用が照射料に含まれるため、原則この管理料は算定しません';
+      boostFxWrap.hidden = true;
+    }
+
+    // boostボタンは全乳房一連（t.boost）のときだけ表示。それ以外は完全に非表示＋無効化。
+    // （表示する場合のみ disabled も併用して二重に押下を防ぐ）
+    if (t.boost) {
+      boostBtn.hidden = false;
+      boostBtn.disabled = false;
+      boostBtn.setAttribute('aria-hidden', 'false');
+      if (boostOn) {
+        boostBtn.classList.add('is-on');
+        boostBtn.setAttribute('aria-pressed', 'true');
+        boostBtn.querySelector('.boost-tx').textContent = 'boost併用例を解除（算定しないに戻す）';
+      } else {
+        boostBtn.classList.remove('is-on');
+        boostBtn.setAttribute('aria-pressed', 'false');
+        boostBtn.querySelector('.boost-tx').textContent = 'boost併用例で管理料を算定する';
+      }
+    } else {
+      // 全乳房以外：非表示＋無効（クリック不可）
+      boostBtn.hidden = true;
+      boostBtn.disabled = true;
+      boostBtn.setAttribute('aria-hidden', 'true');
+      boostBtn.classList.remove('is-on');
+      boostBtn.setAttribute('aria-pressed', 'false');
+    }
+  }
+
+  // A400（短期滞在手術等基本料3）で算定する場合、医療機器安全管理料2は包括されるため
+  // チェックボックス自体を非表示にし、包括である旨の注記だけを残す
+  function applyA400Lock() {
+    var t = tech();
+    var locked = false;
+    if (t.a400) {
+      if (a400Sel.value === 'a400') { locked = true; }
+    }
+    if (locked) {
+      // A400包括：医療機器安全管理料2を含む「06 その他の加算・管理料」を丸ごと非表示にする
+      anzenChk.checked = false;
+      anzenChk.disabled = true;
+      rowAnzen.classList.remove('on');
+      anzenNote.hidden = true;
+      rowExtras.hidden = true;
+    } else {
+      anzenChk.disabled = false;
+      rowAnzen.hidden = false;
+      anzenNote.hidden = true;
+      rowExtras.hidden = false;
+    }
+  }
+
+  // setMgmtDefault=true のときだけ管理料を技術の既定区分にセットする（技術変更時のみ）
+  function syncGates(setMgmtDefault) {
+    var t = tech();
+    $('techHint').textContent = t.hint;
+
+    // 小児加算（通則3）対象外の技術（粒子線・BNCT）はプルダウンを無効化し「なし」に固定
+    if (t.noPed) {
+      pedSel.value = '0';
+      pedSel.disabled = true;
+    } else {
+      pedSel.disabled = false;
+    }
+
+    // IGRT 選択肢を組み替え（series:true は一連固定額の目印を data 属性に持たせる）
+    var opts = IGRT_OPTS[t.igrt];
+    igrtSel.innerHTML = '';
+    opts.forEach(function (o) {
+      var el = document.createElement('option');
+      el.value = String(o.v); el.textContent = o.t;
+      if (o.series) { el.setAttribute('data-series', '1'); }
+      igrtSel.appendChild(el);
+    });
+    igrtSel.disabled = (opts.length === 1);
+    $('igrtHint').textContent =
+      t.igrt === 'none'          ? 'この治療技術では画像誘導放射線治療加算（M001注10）は算定できません' :
+      t.igrt === 'c-req-series'  ? '前立腺IMRT一連評価は IGRT ハ（一連1回9,000点）の算定が施設基準上の要件です' :
+      t.igrt === 'c-req'         ? '前立腺IMRT一連評価は IGRT ハの算定が施設基準上の要件です' :
+      t.igrt === 'a-series'      ? '乳房照射の一連評価はイ（体表面）に代えて一連1回2,400点' :
+      t.igrt === 'a'             ? '乳房照射はイ（体表面）のみ対象' :
+                                   '高エネ4門以上・運動・原体／IMRTで算定可';
+    if ($('igrtHint').textContent.indexOf('要件') >= 0) {
+      $('igrtHint').className = 'hint req';
+    } else {
+      $('igrtHint').className = 'hint';
+    }
+
+    // 管理料デフォルト（技術を変えたときだけ。ユーザーの直接選択は尊重して上書きしない）
+    if (setMgmtDefault) {
+      boostOn = false;  // 技術切替時はboost補正をリセット
+      a400Sel.value = 'tech';  // 算定方式は技術料を既定に戻す
+      if (!t.mgmtLock) {
+        if (!t.mgmtZero) {
+          mgmtSel.value = t.mgmt;
+        }
+      }
+      // 一連評価の標準分割回数をデフォルトに（IGRT・外来・呼吸性などの日数算定に効く）
+      if (t.fxDefault) {
+        fxIn.value = t.fxDefault;
+      }
+    }
+
+    // 一連評価のロック/解除・boostボタン・注記を反映（mgmtSel.value もここで確定）
+    applyMgmtLock();
+
+    // A400包括時は医療機器安全管理料2をグレーアウト
+    applyA400Lock();
+
+    updateGates();
+
+    // 一連評価では回数入力のラベル的意味が変わるので min を保証
+    if (!t.per) {
+      if (parseInt(fxIn.value, 10) < 1) { fxIn.value = 1; }
+    }
+  }
+
+  // 直近の計算結果（CSV／印刷出力用）
+  var lastResult = {
+    lines: [], techLabel: '', fx: 0, total: 0, yen: 0, copayRate: 0.3, copayYen: 0,
+    cond: { ped: '', perType: '', mgmt: '', mgmtN: '', igrt: '', boost: '' }
+  };
+
+  // meta = { code, note, unit, count, factor } いずれも任意。CSVの内訳分解に使う
+  function addLine(frag, name, formula, pts, minor, meta) {
+    var d = document.createElement('div');
+    d.className = 'rline' + (minor ? ' minor' : '');
+    d.style.animationDelay = (frag.childNodes.length * 45) + 'ms';
+    d.innerHTML = '<span class="nm">' + name + '<small>' + formula + '</small></span>' +
+                  '<span class="leader"></span>' +
+                  '<span class="val">' + fmt(pts) + '</span>';
+    frag.appendChild(d);
+    var m = meta || {};
+    lastResult.lines.push({
+      name: name,
+      formula: formula,
+      pts: Math.round(pts),
+      code: m.code || '',
+      unit: (m.unit == null ? '' : m.unit),
+      count: (m.count == null ? '' : m.count),
+      factor: (m.factor == null ? '' : m.factor)
+    });
+  }
+
+  function calc() {
+    lastResult.lines = [];
+    var t = tech();
+    var fx = Math.max(1, Math.min(45, parseInt(fxIn.value, 10) || 1));
+    // 小児加算（通則3）の対象は M000〜M001-3 及び M002〜M004。
+    // M001-4 粒子線治療・M001-5 BNCT は対象外なので乗算しない。
+    var ped = t.noPed ? 0 : parseFloat(pedSel.value);
+    var mgmtPt = parseInt(mgmtSel.value, 10);
+    var mgmtN = parseInt(mgmtNSel.value, 10);
+    var igrtPt = parseInt(igrtSel.value, 10) || 0;
+
+    var frag = document.createDocumentFragment();
+    var total = 0;
+
+    var pedFactor = (ped > 0) ? (1 + ped) : '';
+
+    // ===== ガンマナイフを A400 短期滞在手術等基本料3 で算定する場合 =====
+    // 入院（4泊5日以内）で手術・麻酔・検査・画像診断・放射線治療等を包括評価。
+    // 一連の治療過程では放射線治療(技術料)・A400 を再び算定できない（H28.3.31 疑義解釈）。
+    if (t.a400) {
+      if (a400Sel.value === 'a400') {
+        addLine(frag, 'A400 短期滞在手術等基本料3', 'M001-2 ガンマナイフ／4泊5日以内・包括（生活療養時 59,569点。無床診療所は算定不可）', A400_GAMMA, false,
+          { code: 'A400', unit: A400_GAMMA, count: 1 });
+        total += A400_GAMMA;
+
+        var linesEl0 = $('lines');
+        linesEl0.innerHTML = '';
+        linesEl0.appendChild(frag);
+
+        total = Math.round(total);
+        $('totalPt').textContent = fmt(total);
+        var yen0 = total * 10;
+        $('totalYen').textContent = fmt(yen0);
+        var rate0 = parseFloat($('copay').value);
+        var co0 = Math.round(yen0 * rate0);
+        $('copayYen').textContent = fmt(co0) + ' 円';
+        $('kogakuNote').hidden = (co0 <= 80100);
+
+        lastResult.techLabel = t.label + '（A400 短期滞在手術等基本料3で算定）';
+        lastResult.fx = fx;
+        lastResult.total = total;
+        lastResult.yen = yen0;
+        lastResult.copayRate = rate0;
+        lastResult.copayYen = co0;
+        lastResult.cond = {
+          ped: pedSel.options[pedSel.selectedIndex] ? pedSel.options[pedSel.selectedIndex].textContent : 'なし',
+          perType: 'A400 短期滞在手術等基本料3（包括）',
+          mgmt: '算定しない（A400に包括）',
+          mgmtN: '―',
+          igrt: '―',
+          boost: '―'
+        };
+        sendHeight();
+        return;
+      }
+    }
+
+    // 照射料（小児加算は所定点数に乗算）
+    var basePts = t.per ? t.base * fx : t.base;
+    var baseLabel = t.per ? fmt(t.base) + '点 × ' + fx + '回' : '一連につき';
+    if (ped > 0) {
+      basePts = basePts * (1 + ped);
+      baseLabel += ' × ' + (1 + ped).toFixed(1) + '（小児加算）';
+    }
+    addLine(frag, '照射料：' + t.label.split('（')[0], baseLabel, basePts, false,
+      { code: t.per ? 'M001' : 'M001', unit: t.base, count: t.per ? fx : 1, factor: pedFactor });
+    total += basePts;
+
+    // boost併用：1門照射（高エネ ロ・840点／回）の照射料を個別評価として加算
+    if (boostOn) {
+      if (t.boost) {
+        var bn = Math.max(1, parseInt(boostFx.value, 10) || 1);
+        var bPts = BOOST_BASE * bn * (1 + ped);
+        var bLabel = fmt(BOOST_BASE) + '点 × ' + bn + '回' + (ped > 0 ? ' × ' + (1 + ped).toFixed(1) : '');
+        addLine(frag, '照射料：boost（1門照射）', bLabel, bPts, true,
+          { code: 'M001 ロ', unit: BOOST_BASE, count: bn, factor: pedFactor });
+        total += bPts;
+      }
+    }
+
+    // 管理料
+    if (mgmtPt > 0) {
+      var mp = mgmtPt * mgmtN * (1 + ped);
+      var ml = fmt(mgmtPt) + '点 × ' + mgmtN + '回' + (ped > 0 ? ' × ' + (1 + ped).toFixed(1) : '');
+      addLine(frag, 'M000 放射線治療管理料', ml, mp, false,
+        { code: 'M000', unit: mgmtPt, count: mgmtN, factor: pedFactor });
+      total += mp;
+
+      if ($('sennin').checked) {
+        addLine(frag, '放射線治療専任加算', '330点 × ' + mgmtN + '回', 330 * mgmtN, true,
+          { code: 'M000 注2', unit: 330, count: mgmtN });
+        total += 330 * mgmtN;
+      }
+      if ($('gairai').checked) {
+        addLine(frag, '外来放射線治療加算', '100点 × ' + fx + '日', 100 * fx, true,
+          { code: 'M000 注3', unit: 100, count: fx });
+        total += 100 * fx;
+      }
+    }
+
+    // IGRT（一連評価＝series は「一連につき1回」の固定額。それ以外は1日1回×照射日数）
+    if (igrtPt > 0) {
+      var igrtSeries = false;
+      var selOpt = igrtSel.options[igrtSel.selectedIndex];
+      if (selOpt) {
+        if (selOpt.getAttribute('data-series') === '1') { igrtSeries = true; }
+      }
+      if (igrtSeries) {
+        addLine(frag, '画像誘導放射線治療加算（一連評価）', fmt(igrtPt) + '点 × 一連1回', igrtPt, true,
+          { code: 'M001 注10 ただし書き', unit: igrtPt, count: 1 });
+        total += igrtPt;
+      } else {
+        addLine(frag, '画像誘導放射線治療加算', fmt(igrtPt) + '点 × ' + fx + '日', igrtPt * fx, true,
+          { code: 'M001 注10', unit: igrtPt, count: fx });
+        total += igrtPt * fx;
+      }
+    }
+
+    // 体外照射呼吸性移動対策（M001注11）：原則150点×日数。
+    // ただし乳房照射の一連評価（2のイ）は一連につき1回に限り2,400点に代わる
+    var kokyuPt = 150, kokyuN = fx, kokyuLabel = '150点 × ' + fx + '日';
+    if (t.igrt === 'a-series') {
+      kokyuPt = 2400; kokyuN = 1; kokyuLabel = '2,400点 × 一連1回（乳房一連の特別点数）';
+    }
+
+    // 固定器具加算の区分は治療技術で異なる（体外照射=M001注9／BNCT=M001-5注4）
+    var koteiCode = (t.gates.indexOf('m001bnct') >= 0) ? 'M001-5 注4' : 'M001 注9';
+
+    // チェック式の固定加算（末尾は告示・区分コード）
+    var fixed = [
+      ['anzen',      '医療機器安全管理料2',         1100, 1, '一連につき1回', 'B011-4'],
+      ['kotei',      '体外照射用固定器具加算',       1000, 1, '一連につき1回', koteiCode],
+      ['kokyu',      '体外照射呼吸性移動対策加算',    kokyuPt, kokyuN, kokyuLabel, 'M001 注11'],
+      ['teiiKokyuD', '定位呼吸性移動対策（動体追尾）', 10000, 1, '一連につき', 'M001-3 注'],
+      ['teiiKokyuS', '定位呼吸性移動対策（その他）',   5000, 1, '一連につき', 'M001-3 注'],
+      ['ptcTekiou',  '粒子線治療適応判定加算',       40000, 1, '一連につき', 'M001-4 注2'],
+      ['ptcIgaku',   '粒子線治療医学管理加算',       10000, 1, '一連につき', 'M001-4 注3'],
+      ['bnctTekiou', 'BNCT適応判定加算',            40000, 1, '一連につき', 'M001-5 注2'],
+      ['bnctIgaku',  'BNCT医学管理加算',            10000, 1, '一連につき', 'M001-5 注3']
+    ];
+    fixed.forEach(function (f) {
+      var el = $(f[0]);
+      var row = el.closest('label');
+      if (row.hidden) { return; }
+      if (!el.checked) { return; }
+      addLine(frag, f[1], f[4], f[2] * f[3], true,
+        { code: f[5], unit: f[2], count: f[3] });
+      total += f[2] * f[3];
+    });
+
+    var lines = $('lines');
+    lines.innerHTML = '';
+    lines.appendChild(frag);
+
+    total = Math.round(total);
+    $('totalPt').textContent = fmt(total);
+    var yen = total * 10;
+    $('totalYen').textContent = fmt(yen);
+    var rate = parseFloat($('copay').value);
+    var co = Math.round(yen * rate);
+    $('copayYen').textContent = fmt(co) + ' 円';
+    $('kogakuNote').hidden = (co <= 80100);
+
+    // CSV／印刷出力用に集計値・入力条件サマリーを保存
+    lastResult.techLabel = t.label;
+    lastResult.fx = fx;
+    lastResult.total = total;
+    lastResult.yen = yen;
+    lastResult.copayRate = rate;
+    lastResult.copayYen = co;
+
+    var igrtText = igrtSel.options[igrtSel.selectedIndex] ? igrtSel.options[igrtSel.selectedIndex].textContent : 'なし';
+    var mgmtText = (mgmtPt > 0)
+      ? (mgmtSel.options[mgmtSel.selectedIndex] ? mgmtSel.options[mgmtSel.selectedIndex].textContent : String(mgmtPt))
+      : '算定しない';
+    lastResult.cond = {
+      ped: pedSel.options[pedSel.selectedIndex] ? pedSel.options[pedSel.selectedIndex].textContent : 'なし',
+      perType: t.per ? '1回ごとの個別評価' : '一連評価（包括）',
+      mgmt: mgmtText,
+      mgmtN: (mgmtPt > 0) ? (mgmtN + '回') : '―',
+      igrt: igrtText,
+      boost: (t.boost ? (boostOn ? 'あり（1門照射 ' + (parseInt(boostFx.value, 10) || 0) + '回）' : 'なし') : '―')
+    };
+
+    sendHeight();
+  }
+
+  // チェックボックスの見た目同期
+  Array.prototype.forEach.call(document.querySelectorAll('.chk input'), function (cb) {
+    cb.addEventListener('change', function () {
+      cb.closest('label').classList.toggle('on', cb.checked);
+    });
+  });
+
+  ['change', 'input'].forEach(function (ev) {
+    // 技術変更時のみ管理料を既定区分に自動セット（第1引数 true）
+    techSel.addEventListener(ev, function () { syncGates(true); calc(); });
+    [fxIn, pedSel, mgmtNSel, igrtSel, boostFx, $('copay')].forEach(function (el) {
+      el.addEventListener(ev, calc);
+    });
+    // 算定方式（A400）切替時は医療機器安全管理料2のグレーアウトを更新してから再計算
+    a400Sel.addEventListener(ev, function () { applyA400Lock(); calc(); });
+    // 管理料はユーザーの選択を尊重。値は上書きせず、依存表示の更新と再計算だけ行う
+    mgmtSel.addEventListener(ev, function () { updateGates(); calc(); });
+  });
+
+  // boost併用補正トグル（全乳房一連のみ有効。それ以外はグレーアウトで無反応）
+  boostBtn.addEventListener('click', function () {
+    if (boostBtn.disabled) { return; }
+    boostOn = !boostOn;
+    applyMgmtLock();
+    updateGates();
+    // ON時は専任加算をおすすめ既定でチェック（管理料の算定ごとに+330点）
+    if (boostOn) {
+      var sennin = $('sennin');
+      if (sennin) {
+        if (!$('rowSennin').hidden) {
+          sennin.checked = true;
+          $('rowSennin').classList.add('on');
+        }
+      }
+    }
+    calc();
+  });
+  Array.prototype.forEach.call(document.querySelectorAll('.chk input'), function (cb) {
+    cb.addEventListener('change', calc);
+  });
+
+  /* ===== CSV / 印刷（PDF）出力 ===== */
+  function csvCell(s) {
+    // CSVエスケープ：ダブルクォート・カンマ・改行を含む場合は引用符で囲む
+    var v = String(s == null ? '' : s);
+    var needQuote = false;
+    if (v.indexOf('"') >= 0) { needQuote = true; }
+    if (v.indexOf(',') >= 0) { needQuote = true; }
+    if (v.indexOf('\n') >= 0) { needQuote = true; }
+    if (needQuote) {
+      v = '"' + v.replace(/"/g, '""') + '"';
+    }
+    return v;
+  }
+
+  function rateLabel(r) {
+    if (r === 0.1) { return '1割'; }
+    if (r === 0.2) { return '2割'; }
+    return '3割';
+  }
+
+  function buildCsv() {
+    var c = lastResult.cond || {};
+    var rows = [];
+
+    // ===== ヘッダー（タイトル＋入力条件サマリー） =====
+    rows.push(['放射線治療 算定点数シミュレータ（学習用概算）']);
+    rows.push(['出力日時', new Date().toLocaleString('ja-JP')]);
+    rows.push(['点数改定', '2026年6月改定（令和8年告示）ベース']);
+    rows.push([]);
+    rows.push(['■ 入力条件']);
+    rows.push(['治療技術', lastResult.techLabel]);
+    rows.push(['評価方式', c.perType]);
+    rows.push(['照射回数（分割）', lastResult.fx + '回']);
+    rows.push(['小児加算', c.ped]);
+    rows.push(['M000 放射線治療管理料', c.mgmt]);
+    rows.push(['管理料の算定回数', c.mgmtN]);
+    rows.push(['画像誘導放射線治療加算（IGRT）', c.igrt]);
+    rows.push(['boost併用', c.boost]);
+    rows.push(['窓口負担', rateLabel(lastResult.copayRate)]);
+    rows.push([]);
+
+    // ===== 算定明細（単価×回数×係数 に分解） =====
+    rows.push(['■ 算定明細']);
+    rows.push(['項目', '区分・告示', '所定点数（単価）', '回数', '小児係数', '内訳', '小計（点）']);
+    lastResult.lines.forEach(function (ln) {
+      rows.push([
+        ln.name,
+        ln.code,
+        (ln.unit === '' ? '' : ln.unit),
+        (ln.count === '' ? '' : ln.count),
+        (ln.factor === '' ? '' : ln.factor),
+        ln.formula,
+        ln.pts
+      ]);
+    });
+    rows.push([]);
+
+    // ===== 合計 =====
+    rows.push(['■ 合計']);
+    rows.push(['一連の総点数', '', '', '', '', '', lastResult.total]);
+    rows.push(['金額（1点 = 10円）', '', '', '', '', '', lastResult.yen + '円']);
+    rows.push(['窓口負担（' + rateLabel(lastResult.copayRate) + '）', '', '', '', '', '', lastResult.copayYen + '円']);
+    rows.push([]);
+    rows.push(['※学習用の概算。点数は2026年6月改定（令和8年告示）ベース。実際の算定は最新の告示・通知・疑義解釈および審査支払機関の取扱いに従ってください。']);
+    rows.push(['※施設基準の届出が前提の項目を含みます。入院料・診察料・検査料等は含みません。']);
+
+    var lines = rows.map(function (cols) {
+      return cols.map(csvCell).join(',');
+    });
+    return lines.join('\r\n');
+  }
+
+  function downloadCsv() {
+    var csv = buildCsv();
+    // Excel(日本語)での文字化け防止に UTF-8 BOM を付与
+    var bom = String.fromCharCode(0xFEFF);
+    var blob = new Blob([bom + csv], { type: 'text/csv;charset=utf-8;' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = 'rt-fee-' + new Date().toISOString().slice(0, 10) + '.csv';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+  }
+
+  $('btnCsv').addEventListener('click', downloadCsv);
+  $('btnPrint').addEventListener('click', function () { window.print(); });
+
+  /* iframe 高さ通知（postMessage + ResizeObserver）
+     ★無限増殖バグ対策：body/documentElement は親が設定した iframe 高さに連動して
+       膨らむため計測に使わない。コンテンツ実体である .sim-wrap の高さ＋body余白から
+       算出し、前回値と一致するときは再送しない（正帰還ループを遮断）。*/
+  var simWrap = document.querySelector('.sim-wrap');
+  var lastSentH = 0;
+  function contentHeight() {
+    var bodyStyle = window.getComputedStyle(document.body);
+    var padTop = parseFloat(bodyStyle.paddingTop) || 0;
+    var padBottom = parseFloat(bodyStyle.paddingBottom) || 0;
+    var wrapH = simWrap ? Math.ceil(simWrap.getBoundingClientRect().height) : document.body.scrollHeight;
+    return Math.ceil(wrapH + padTop + padBottom);
+  }
+  function sendHeight() {
+    if (window.parent === window) { return; }
+    var h = contentHeight();
+    if (h <= 0) { return; }
+    /* 1px 程度の誤差で送り続けないよう、2px 超の変化があるときだけ送る */
+    if (Math.abs(h - lastSentH) <= 2) { return; }
+    lastSentH = h;
+    window.parent.postMessage({ type: 'iframe-height', height: h }, '*');
+  }
+  if (window.ResizeObserver) {
+    /* コンテンツ実体（.sim-wrap）だけを監視。body/documentElement は監視しない */
+    var ro = new ResizeObserver(sendHeight);
+    if (simWrap) { ro.observe(simWrap); }
+  } else {
+    window.addEventListener('resize', sendHeight);
+  }
+
+  syncGates(true);
+  calc();
+  /* 初回・フォント読込後・遅延の複数タイミングで高さを送る */
+  setTimeout(sendHeight, 150);
+  setTimeout(sendHeight, 600);
+  setTimeout(sendHeight, 1200);
+  window.addEventListener('load', sendHeight);
+})();
+</script>
+</body>
+</html>

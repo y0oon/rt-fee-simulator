@@ -1,0 +1,5 @@
+# macOS metadata
+.DS_Store
+
+# 配布ZIP（build.sh で再生成されるビルド生成物）
+rt-fee-simulator.zip
